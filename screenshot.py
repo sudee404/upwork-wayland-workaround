@@ -20,17 +20,15 @@ License: MIT
 
 import asyncio
 import datetime as dt
-import subprocess
 import sys
 import os
 import shutil
-import tempfile
 from pathlib import Path
-from typing import Optional, Tuple, List
+from typing import List
 
 from dbus_next.aio import MessageBus
 from dbus_next.service import ServiceInterface, method, signal
-from dbus_next import BusType, DBusError, Variant
+from dbus_next import BusType, DBusError
 
 
 # ============================================================================
@@ -86,13 +84,13 @@ class ScreenshotBackend:
         """Check if this backend is available on the system."""
         raise NotImplementedError
 
-    async def capture_full(self, filename: str, include_cursor: bool = False) -> bool:
-        """Capture full screen screenshot."""
+    def capture_full_sync(self, filename: str, include_cursor: bool = False) -> bool:
+        """Capture full screen screenshot (synchronous)."""
         raise NotImplementedError
 
-    async def capture_area(self, filename: str, x: int, y: int,
-                          width: int, height: int) -> bool:
-        """Capture area screenshot."""
+    def capture_area_sync(self, filename: str, x: int, y: int,
+                         width: int, height: int) -> bool:
+        """Capture area screenshot (synchronous)."""
         raise NotImplementedError
 
 
@@ -129,8 +127,9 @@ class FlameshotBackend(ScreenshotBackend):
         """Check if Flameshot is installed."""
         return self._binary is not None
 
-    async def capture_full(self, filename: str, include_cursor: bool = False) -> bool:
-        """Capture full screen using Flameshot."""
+    def capture_full_sync(self, filename: str, include_cursor: bool = False) -> bool:
+        """Capture full screen using Flameshot (synchronous)."""
+        import subprocess
         debug(f'[Flameshot] Capturing full screen to: {filename}')
 
         # Ensure directory exists
@@ -140,20 +139,16 @@ class FlameshotBackend(ScreenshotBackend):
         cmd = [self._binary, 'full', '--path', filename]
 
         try:
-            proc = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-                env=self._env
-            )
-
-            stdout, stderr = await asyncio.wait_for(
-                proc.communicate(),
+            result = subprocess.run(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                env=self._env,
                 timeout=SCREENSHOT_TIMEOUT
             )
 
-            if proc.returncode != 0:
-                debug(f'[Flameshot] Command failed: {stderr.decode()}')
+            if result.returncode != 0:
+                debug(f'[Flameshot] Command failed: {result.stderr.decode()}')
                 return False
 
             # Verify file was created
@@ -164,16 +159,17 @@ class FlameshotBackend(ScreenshotBackend):
                 debug(f'[Flameshot] File not created')
                 return False
 
-        except asyncio.TimeoutError:
+        except subprocess.TimeoutExpired:
             error('[Flameshot] Screenshot timed out')
             return False
         except Exception as e:
             error(f'[Flameshot] Error: {e}')
             return False
 
-    async def capture_area(self, filename: str, x: int, y: int,
-                          width: int, height: int) -> bool:
-        """Capture specific area using Flameshot."""
+    def capture_area_sync(self, filename: str, x: int, y: int,
+                         width: int, height: int) -> bool:
+        """Capture specific area using Flameshot (synchronous)."""
+        import subprocess
         debug(f'[Flameshot] Capturing area {x},{y} {width}x{height} to: {filename}')
 
         # Ensure directory exists
@@ -184,20 +180,16 @@ class FlameshotBackend(ScreenshotBackend):
         cmd = [self._binary, 'full', '--region', region, '--path', filename]
 
         try:
-            proc = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-                env=self._env
-            )
-
-            stdout, stderr = await asyncio.wait_for(
-                proc.communicate(),
+            result = subprocess.run(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                env=self._env,
                 timeout=SCREENSHOT_TIMEOUT
             )
 
-            if proc.returncode != 0:
-                debug(f'[Flameshot] Area capture failed: {stderr.decode()}')
+            if result.returncode != 0:
+                debug(f'[Flameshot] Area capture failed: {result.stderr.decode()}')
                 return False
 
             if Path(filename).exists():
@@ -207,7 +199,7 @@ class FlameshotBackend(ScreenshotBackend):
                 debug(f'[Flameshot] File not created')
                 return False
 
-        except asyncio.TimeoutError:
+        except subprocess.TimeoutExpired:
             error('[Flameshot] Area screenshot timed out')
             return False
         except Exception as e:
@@ -247,8 +239,9 @@ class GnomeScreenshotBackend(ScreenshotBackend):
         """Check if gnome-screenshot is installed."""
         return self._binary is not None
 
-    async def capture_full(self, filename: str, include_cursor: bool = False) -> bool:
-        """Capture full screen using gnome-screenshot."""
+    def capture_full_sync(self, filename: str, include_cursor: bool = False) -> bool:
+        """Capture full screen using gnome-screenshot (synchronous)."""
+        import subprocess
         debug(f'[gnome-screenshot] Capturing full screen to: {filename}')
 
         # Ensure directory exists
@@ -260,20 +253,16 @@ class GnomeScreenshotBackend(ScreenshotBackend):
             cmd.append('-p')  # Include pointer
 
         try:
-            proc = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-                env=self._env
-            )
-
-            stdout, stderr = await asyncio.wait_for(
-                proc.communicate(),
+            result = subprocess.run(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                env=self._env,
                 timeout=SCREENSHOT_TIMEOUT
             )
 
-            if proc.returncode != 0:
-                debug(f'[gnome-screenshot] Command failed: {stderr.decode()}')
+            if result.returncode != 0:
+                debug(f'[gnome-screenshot] Command failed: {result.stderr.decode()}')
                 return False
 
             if Path(filename).exists():
@@ -283,21 +272,21 @@ class GnomeScreenshotBackend(ScreenshotBackend):
                 debug(f'[gnome-screenshot] File not created')
                 return False
 
-        except asyncio.TimeoutError:
+        except subprocess.TimeoutExpired:
             error('[gnome-screenshot] Screenshot timed out')
             return False
         except Exception as e:
             error(f'[gnome-screenshot] Error: {e}')
             return False
 
-    async def capture_area(self, filename: str, x: int, y: int,
-                          width: int, height: int) -> bool:
+    def capture_area_sync(self, filename: str, x: int, y: int,
+                         width: int, height: int) -> bool:
         """
         Capture area - gnome-screenshot doesn't support this in non-interactive mode.
         Falls back to full screen capture.
         """
         debug(f'[gnome-screenshot] Area capture not supported, using full screen')
-        return await self.capture_full(filename)
+        return self.capture_full_sync(filename)
 
 
 # ============================================================================
@@ -336,11 +325,11 @@ class ScreenshotManager:
             error('No screenshot backends available!')
             error('Please install flameshot or gnome-screenshot')
 
-    async def capture_full(self, filename: str, include_cursor: bool = False) -> bool:
-        """Capture full screen using first available backend."""
+    def capture_full_sync(self, filename: str, include_cursor: bool = False) -> bool:
+        """Capture full screen using first available backend (synchronous)."""
         for backend in self.backends:
             debug(f'Trying backend: {backend.name}')
-            result = await backend.capture_full(filename, include_cursor)
+            result = backend.capture_full_sync(filename, include_cursor)
             if result:
                 return True
             debug(f'Backend {backend.name} failed, trying next...')
@@ -348,12 +337,12 @@ class ScreenshotManager:
         error('All backends failed for full screen capture')
         return False
 
-    async def capture_area(self, filename: str, x: int, y: int,
-                          width: int, height: int) -> bool:
-        """Capture area using first available backend."""
+    def capture_area_sync(self, filename: str, x: int, y: int,
+                         width: int, height: int) -> bool:
+        """Capture area using first available backend (synchronous)."""
         for backend in self.backends:
             debug(f'Trying backend: {backend.name}')
-            result = await backend.capture_area(filename, x, y, width, height)
+            result = backend.capture_area_sync(filename, x, y, width, height)
             if result:
                 return True
             debug(f'Backend {backend.name} failed, trying next...')
@@ -378,13 +367,6 @@ class ScreenshotInterface(ServiceInterface):
     def __init__(self, manager: ScreenshotManager):
         super().__init__('org.gnome.Shell.Screenshot')
         self.manager = manager
-        self._loop = None
-
-    def _get_loop(self):
-        """Get or create event loop reference."""
-        if self._loop is None:
-            self._loop = asyncio.get_event_loop()
-        return self._loop
 
     def _resolve_filename(self, filename: str) -> str:
         """
@@ -422,15 +404,8 @@ class ScreenshotInterface(ServiceInterface):
 
         resolved_filename = self._resolve_filename(filename)
 
-        # Run async capture in the event loop
-        loop = self._get_loop()
-        future = asyncio.run_coroutine_threadsafe(
-            self.manager.capture_full(resolved_filename, include_cursor),
-            loop
-        )
-
         try:
-            success = future.result(timeout=SCREENSHOT_TIMEOUT + 5)
+            success = self.manager.capture_full_sync(resolved_filename, include_cursor)
             if success:
                 info(f'Screenshot saved: {resolved_filename}')
                 return [True, resolved_filename]
@@ -486,14 +461,8 @@ class ScreenshotInterface(ServiceInterface):
 
         resolved_filename = self._resolve_filename(filename)
 
-        loop = self._get_loop()
-        future = asyncio.run_coroutine_threadsafe(
-            self.manager.capture_area(resolved_filename, x, y, width, height),
-            loop
-        )
-
         try:
-            success = future.result(timeout=SCREENSHOT_TIMEOUT + 5)
+            success = self.manager.capture_area_sync(resolved_filename, x, y, width, height)
             if success:
                 info(f'Area screenshot saved: {resolved_filename}')
                 return [True, resolved_filename]
@@ -672,8 +641,6 @@ async def main():
 
     # Create interfaces
     screenshot = ScreenshotInterface(manager)
-    screenshot._loop = asyncio.get_event_loop()
-
     idle = IdleMonitorInterface()
 
     # Try to connect to real idle monitor
@@ -706,11 +673,25 @@ async def main():
     info('Bridge is ready! Waiting for screenshot requests...')
     info('-' * 60)
 
-    # Keep running forever
+    # Keep running forever - use Event for clean shutdown
+    stop_event = asyncio.Event()
+
+    # Handle signals for graceful shutdown
+    import signal
+
+    def handle_signal(signum, frame):
+        info(f'Received signal {signum}, shutting down...')
+        stop_event.set()
+
+    signal.signal(signal.SIGTERM, handle_signal)
+    signal.signal(signal.SIGINT, handle_signal)
+
     try:
-        await asyncio.get_event_loop().create_future()
+        await stop_event.wait()
     except asyncio.CancelledError:
-        info('Bridge shutting down...')
+        pass
+
+    info('Bridge shutting down...')
 
 
 if __name__ == '__main__':

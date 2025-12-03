@@ -106,14 +106,15 @@ check_prerequisites() {
 
 is_bridge_running() {
     if [ -f "$BRIDGE_PID_FILE" ]; then
-        local pid=$(cat "$BRIDGE_PID_FILE")
-        if kill -0 "$pid" 2>/dev/null; then
+        local pid
+        pid=$(cat "$BRIDGE_PID_FILE" 2>/dev/null) || return 1
+        if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
             return 0
         fi
     fi
 
-    # Also check by process name
-    if pgrep -f "python3.*screenshot\.py" > /dev/null 2>&1; then
+    # Also check by process name - use more specific pattern
+    if pgrep -f "python3 $BRIDGE_SCRIPT" > /dev/null 2>&1; then
         return 0
     fi
 
@@ -152,16 +153,17 @@ start_bridge() {
 
 stop_bridge() {
     if [ -f "$BRIDGE_PID_FILE" ]; then
-        local pid=$(cat "$BRIDGE_PID_FILE")
-        if kill -0 "$pid" 2>/dev/null; then
+        local pid
+        pid=$(cat "$BRIDGE_PID_FILE" 2>/dev/null) || true
+        if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
             log_info "Stopping bridge (PID: $pid)..."
             kill "$pid" 2>/dev/null || true
             rm -f "$BRIDGE_PID_FILE"
         fi
     fi
 
-    # Also kill any lingering processes
-    pkill -f "python3.*screenshot\.py" 2>/dev/null || true
+    # Also kill any lingering processes - use specific pattern
+    pkill -f "python3 $BRIDGE_SCRIPT" 2>/dev/null || true
 }
 
 # =============================================================================
@@ -240,7 +242,8 @@ show_status() {
 
     # Check bridge
     if is_bridge_running; then
-        local pid=$(pgrep -f "python3.*screenshot\.py" 2>/dev/null || cat "$BRIDGE_PID_FILE" 2>/dev/null)
+        local pid
+        pid=$(pgrep -f "python3 $BRIDGE_SCRIPT" 2>/dev/null || cat "$BRIDGE_PID_FILE" 2>/dev/null || echo "unknown")
         echo "Screenshot Bridge: RUNNING (PID: $pid)"
     else
         echo "Screenshot Bridge: NOT RUNNING"
@@ -289,36 +292,53 @@ show_status() {
 # =============================================================================
 
 main() {
+    local debug_mode=0
+
     # Parse command line options
-    case "${1:-}" in
-        --help|-h)
-            show_help
-            exit 0
-            ;;
-        --start-bridge)
-            check_prerequisites
-            start_bridge
-            exit $?
-            ;;
-        --stop-bridge)
-            stop_bridge
-            log_info "Bridge stopped"
-            exit 0
-            ;;
-        --status)
-            show_status
-            exit 0
-            ;;
-        --check)
-            check_prerequisites
-            log_info "All checks passed!"
-            exit 0
-            ;;
-        --debug)
-            export UPWORK_BRIDGE_DEBUG=1
-            shift
-            ;;
-    esac
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --help|-h)
+                show_help
+                exit 0
+                ;;
+            --start-bridge)
+                check_prerequisites
+                start_bridge
+                exit $?
+                ;;
+            --stop-bridge)
+                stop_bridge
+                log_info "Bridge stopped"
+                exit 0
+                ;;
+            --status)
+                show_status
+                exit 0
+                ;;
+            --check)
+                check_prerequisites
+                log_info "All checks passed!"
+                exit 0
+                ;;
+            --debug)
+                export UPWORK_BRIDGE_DEBUG=1
+                debug_mode=1
+                shift
+                ;;
+            --)
+                shift
+                break
+                ;;
+            -*)
+                log_error "Unknown option: $1"
+                show_help
+                exit 1
+                ;;
+            *)
+                break
+                ;;
+        esac
+    done
 
     # Normal operation: check, start bridge, launch Upwork
     check_prerequisites

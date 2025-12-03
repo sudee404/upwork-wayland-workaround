@@ -78,7 +78,14 @@ install_dependencies() {
 
     # Install Python dependencies
     log_info "Installing Python dependencies..."
-    pip3 install --user dbus-next
+    # Try pip with --user first, fall back to --break-system-packages for PEP 668 systems
+    if ! pip3 install --user dbus-next 2>/dev/null; then
+        log_warn "Standard pip install failed, trying with --break-system-packages..."
+        pip3 install --user --break-system-packages dbus-next 2>/dev/null || {
+            log_error "Failed to install dbus-next. Try: pipx install dbus-next"
+            log_error "Or create a virtual environment"
+        }
+    fi
 
     log_info "Dependencies installed successfully"
 }
@@ -211,10 +218,16 @@ test_screenshot() {
     # Set up environment for test
     export QT_QPA_PLATFORM=wayland
 
+    # Helper function to get file size portably
+    get_file_size() {
+        wc -c < "$1" 2>/dev/null | tr -d ' '
+    }
+
     if flameshot full --path "$test_file" 2>/dev/null; then
         if [ -f "$test_file" ]; then
-            local size=$(stat -c%s "$test_file" 2>/dev/null || echo "0")
-            if [ "$size" -gt 0 ]; then
+            local size
+            size=$(get_file_size "$test_file")
+            if [ "${size:-0}" -gt 0 ]; then
                 log_info "Screenshot test PASSED!"
                 log_info "Test file: $test_file ($(du -h "$test_file" | cut -f1))"
                 rm -f "$test_file"
@@ -227,8 +240,9 @@ test_screenshot() {
 
     if gnome-screenshot -f "$test_file" 2>/dev/null; then
         if [ -f "$test_file" ]; then
-            local size=$(stat -c%s "$test_file" 2>/dev/null || echo "0")
-            if [ "$size" -gt 0 ]; then
+            local size
+            size=$(get_file_size "$test_file")
+            if [ "${size:-0}" -gt 0 ]; then
                 log_info "gnome-screenshot test PASSED!"
                 log_info "Test file: $test_file ($(du -h "$test_file" | cut -f1))"
                 rm -f "$test_file"
@@ -300,7 +314,7 @@ show_menu() {
     echo "6) Test screenshot functionality"
     echo "7) Exit"
     echo ""
-    read -p "Select option [1-7]: " choice
+    read -rp "Select option [1-7]: " choice
 
     case "$choice" in
         1)
@@ -353,7 +367,7 @@ main() {
         log_warn "Not running on Wayland (XDG_SESSION_TYPE=$XDG_SESSION_TYPE)"
         log_warn "This tool is designed for GNOME Wayland sessions"
         echo ""
-        read -p "Continue anyway? [y/N]: " confirm
+        read -rp "Continue anyway? [y/N]: " confirm
         if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
             exit 0
         fi
